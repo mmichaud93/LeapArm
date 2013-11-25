@@ -4,7 +4,6 @@ import com.leapmotion.leap.Controller;
 import com.leapmotion.leap.Frame;
 import com.leapmotion.leap.Hand;
 import com.leapmotion.leap.Listener;
-import com.leapmotion.leap.Vector;
 
 
 public class LeapArm {
@@ -30,11 +29,11 @@ public class LeapArm {
 	
 	final static int ROTATE_MAX_SPEED = 100;
 	final static int ROTATE_MIN_SPEED = 0;
-	final static int ROTATE_MAX_ANGLE = 100;
+	final static int ROTATE_MAX_ANGLE = 140;
 	final static int ROTATE_MIN_ANGLE = 0;
 	
-	final static float X_MAX = 100;
-	final static float X_MIN = -100;
+	final static float X_MAX = 350;
+	final static float X_MIN = 0;
 	
 	/*
 	 * Leap motion things
@@ -76,22 +75,46 @@ public class LeapArm {
 		 */
 		boolean running = true;
 		while(running) {
+			try {
 			// we have a hand to read
 			if(hand!=null && hand.palmPosition()!=null) {
 				// determine where we should move the arm to
-				clawTarget = (int) GetAngleFromZ((int)hand.palmPosition().getZ()+125);
-				armTarget = (int) GetAngleFromY((int)hand.palmPosition().getY());
-				rotateTarget = (int) GetAngleFromX((int)hand.palmPosition().getX());
-				System.out.println(Math.abs(clawTarget-clawAngle)+", "+Math.abs(armTarget-armAngle)+", "+Math.abs(rotateTarget-rotateAngle));
 				
+				if(clawAngle > CLAW_MAX_ANGLE) {
+					Motor.A.stop();
+				}
+				if(armAngle > ARM_MAX_ANGLE) {
+					Motor.B.stop();
+				}
+				if(rotateAngle > ROTATE_MAX_ANGLE) {
+					Motor.C.stop();
+				}
+				
+				int z = (int) ((hand.palmPosition().getZ()+150)/5);
+				z*=5;
+				int y = (int) (hand.palmPosition().getY()/5);
+				y*=5;
+				int x = (int) ((hand.palmPosition().getX()+(X_MAX-X_MIN)/2)/5);
+				x*=5;
+				clawTarget = (int) GetAngleFromZ(z);
+				armTarget = (int) GetAngleFromY(y);
+				rotateTarget = (int) GetAngleFromX(x);
+				System.out.println(Math.abs(clawTarget-clawAngle)+", "+Math.abs(armTarget-armAngle)+", "+Math.abs(rotateTarget-rotateAngle)+", "+rotateTarget);
+
 				// we need to only move one motor at a time. This is another weakness in the NXT. I think it has something to do with the tachometers
 				// getting confused with each other.
 				if(Math.abs(clawTarget-clawAngle) > Math.abs(armTarget-armAngle) && Math.abs(clawTarget-clawAngle) > Math.abs(rotateTarget-rotateAngle)) {
+					Motor.B.stop();
+					Motor.C.stop();
 					MoveClaw();
 				} else if (Math.abs(armTarget-armAngle) > Math.abs(clawTarget-clawAngle) && Math.abs(armTarget-armAngle) > Math.abs(rotateTarget-rotateAngle)){
+					Motor.A.stop();
+					Motor.C.stop();
 					MoveArm();
-				} else if (Math.abs(rotateTarget-rotateAngle) > Math.abs(clawTarget-clawAngle) && Math.abs(rotateTarget-rotateAngle) > Math.abs(armTarget-armAngle)){
-					//Rotate();
+				} else if (Math.abs(rotateTarget-rotateAngle) >= Math.abs(clawTarget-clawAngle) && Math.abs(rotateTarget-rotateAngle) >= Math.abs(armTarget-armAngle)){
+					Motor.A.stop();
+					Motor.B.stop();
+					Rotate();
 				} else {
 					Motor.A.stop();
 					Motor.B.stop();
@@ -100,10 +123,14 @@ public class LeapArm {
 				
 				
 			} else {
+				System.out.println("All is null");
 				// no hand input so freeze the motors
 				Motor.A.stop();
 				Motor.B.stop();
 				Motor.C.stop();
+			}
+			} catch (Exception e) {
+				
 			}
 			// give up the loop and give control to the rest of the program
 			Thread.yield();
@@ -140,7 +167,7 @@ public class LeapArm {
 		return (z-Z_MIN)*(CLAW_MAX_ANGLE/(Z_MAX-Z_MIN));
 	}
 	public int GetClawSpeedFromAngleDistance(int distance) {
-		int speed = (int) (-0.011*(distance*distance)+2.9571*distance+0);
+		int speed = (int) (-0.011*(distance*distance)+2.9571*distance+15);
 		if(speed < CLAW_MIN_SPEED) {
 			speed = CLAW_MIN_SPEED;
 		}
@@ -178,7 +205,7 @@ public class LeapArm {
 		return ((y-Y_MAX)*((ARM_MAX_ANGLE)/(Y_MIN-Y_MAX)));
 	}
 	public int GetArmSpeedFromAngleDistance(int distance) {
-		int speed = (int) (-0.011*(distance*distance)+2.9571*distance+0);
+		int speed = (int) (-0.011*(distance*distance)+2.9571*distance+15);
 		if(speed < ARM_MIN_SPEED) {
 			speed = ARM_MIN_SPEED;
 		}
@@ -190,7 +217,7 @@ public class LeapArm {
 	public void Rotate() {
 		//System.out.println("C tacho count: " +Motor.C.getTachoCount() + ", " + Math.abs(rotateTarget-rotateAngle));
 		rotateAngle = Motor.C.getTachoCount();
-		Motor.C.setSpeed(GetRotateSpeedFromAngleDistance(Math.abs(Math.abs(rotateTarget-rotateAngle)-rotateAngle)));
+		Motor.C.setSpeed(GetRotateSpeedFromAngleDistance(Math.abs(Math.abs(rotateTarget-rotateAngle))));
 
 		// Dont move is the distance is less than 1 or if the motor cant physically move
 		if(Math.abs(Math.abs(rotateTarget-rotateAngle)-rotateAngle) < 1 || Motor.C.isStalled()) {
@@ -198,7 +225,8 @@ public class LeapArm {
 			return;
 		}
 		
-		if(Math.abs(rotateTarget-rotateAngle)-rotateAngle < 0) {
+		//if(Math.abs(rotateTarget-rotateAngle)-rotateAngle < 0) {
+		if(rotateTarget-rotateAngle < 0) {
 			Motor.C.backward();
 		} else if(rotateTarget-rotateAngle > 0) {
 			Motor.C.forward();
@@ -207,21 +235,22 @@ public class LeapArm {
 		}
 	}
 	public float GetAngleFromX(int x) {
-		System.out.println("x = "+x);
+		//System.out.println("x = "+x+", "+((x-X_MAX)*((ROTATE_MAX_ANGLE)/(X_MIN-X_MAX))));
 		if(x > X_MAX) {
-			return ROTATE_MAX_ANGLE;
-		}
-		if(x < X_MAX) {
 			return ROTATE_MIN_ANGLE;
 		}
+		if(x < X_MIN) {
+			return ROTATE_MAX_ANGLE;
+		}
+		
 		return ((x-X_MAX)*((ROTATE_MAX_ANGLE)/(X_MIN-X_MAX)));
 	}
 	public int GetRotateSpeedFromAngleDistance(int distance) {
-		int speed = (int) (-0.011*(distance*distance)+2.9571*distance+0);
+		int speed = (int) (-0.0015*(distance*distance)+1.2214*distance+15);//(-0.011*(distance*distance)+2.9571*distance+0);
+		System.out.println("speed = "+speed+", distance = "+distance);
 		if(speed < ROTATE_MIN_SPEED) {
 			speed = ROTATE_MIN_SPEED;
 		}
-		
 		return speed;
 	}
 	
@@ -231,6 +260,7 @@ public class LeapArm {
 	    {
 	    	 Frame frame = controller.frame(); //The latest frame
 	    	 if (!frame.hands().isEmpty()) {
+	    		 // TODO if we used frame.pointables() instead, this would work with more then just hands
 	    		 // just use the first hand we find
 		     	hand = frame.hands().get(0);
 		     } else {
